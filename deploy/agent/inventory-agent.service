@@ -8,6 +8,8 @@ Type=oneshot
 ExecStart=/usr/local/bin/inventory-agent
 # Runs as root on purpose: `docker ps` and the token file need it. Everything
 # else is locked down; the agent only reads and makes one outbound request.
+# Keep /etc/homelab-inventory-agent root-owned and 0700: the config names
+# commands that run here as root, and the agent refuses a looser file.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

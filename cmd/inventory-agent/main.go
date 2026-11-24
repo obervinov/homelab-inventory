@@ -37,6 +37,10 @@ func main() {
 }
 
 func run(configPath string, dryRun bool) error {
+	// Before anything from the file is trusted: it names commands to execute.
+	if err := agent.CheckConfigFile(configPath); err != nil {
+		return err
+	}
 	cfg, err := agent.LoadConfig(configPath)
 	if err != nil {
 		return err
@@ -67,8 +71,11 @@ func run(configPath string, dryRun bool) error {
 		}
 		token = strings.TrimSpace(string(raw))
 	}
-	if cfg.URL == "" || token == "" {
-		return fmt.Errorf("url and token are required")
+	if token == "" {
+		return fmt.Errorf("token is empty")
+	}
+	if err := agent.CheckURL(cfg.URL); err != nil {
+		return err
 	}
 	return send(ctx, cfg.URL, token, body)
 }
