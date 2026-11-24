@@ -136,7 +136,9 @@ func TestReportReplacesAndIsolatesSources(t *testing.T) {
 func TestNeverSeenSourceIsStale(t *testing.T) {
 	s, _ := newServer(t)
 	var out inventoryOut
-	json.Unmarshal(do(s.Internal(), "GET", "/v1/inventory", "read", "").Body.Bytes(), &out)
+	if err := json.Unmarshal(do(s.Internal(), "GET", "/v1/inventory", "read", "").Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
 	if len(out.Sources) != 2 || !out.Sources[0].Stale || out.Sources[0].LastSeen != nil {
 		t.Errorf("%+v", out.Sources)
 	}

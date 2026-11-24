@@ -86,6 +86,8 @@ func main() {
 	shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for _, s := range servers {
-		s.Shutdown(shut)
+		if err := s.Shutdown(shut); err != nil {
+			log.Error("shutdown", "addr", s.Addr, "error", err)
+		}
 	}
 }

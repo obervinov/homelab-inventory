@@ -116,7 +116,7 @@ func (s *Server) Internal() http.Handler {
 	return mux
 }
 
-func health(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) }
+func health(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) }
 
 type reportBody struct {
 	Items []store.Item `json:"items"`
@@ -206,5 +206,6 @@ func (s *Server) inventory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+	// The client is gone if this fails; there is nobody left to tell.
+	_ = json.NewEncoder(w).Encode(out)
 }

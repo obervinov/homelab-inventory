@@ -37,9 +37,9 @@ func TestCollect(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/apis/helm.cattle.io/v1/helmcharts":
-			w.Write([]byte(`{"items":[{"metadata":{"namespace":"sys","name":"cm"},"spec":{"chart":"cert-manager","version":"v1.2.3"}}]}`))
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"namespace":"sys","name":"cm"},"spec":{"chart":"cert-manager","version":"v1.2.3"}}]}`))
 		case "/api/v1/pods":
-			w.Write([]byte(`{"items":[
+			_, _ = w.Write([]byte(`{"items":[
 			 {"metadata":{"namespace":"a","name":"p1"},"spec":{"containers":[{"image":"x/app:1.0"},{"image":"x/side:2"}]},"status":{"phase":"Running"}},
 			 {"metadata":{"namespace":"a","name":"p2"},"spec":{"containers":[{"image":"x/app:1.0"}]},"status":{"phase":"Running"}},
 			 {"metadata":{"namespace":"a","name":"job"},"spec":{"containers":[{"image":"x/old:0.1"}]},"status":{"phase":"Succeeded"}}]}`))
