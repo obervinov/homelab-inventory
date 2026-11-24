@@ -58,6 +58,9 @@ func main() {
 				} else {
 					st.Replace(cfg.Kubernetes.Source, items, time.Now())
 					log.Info("kubernetes collect", "items", len(items))
+					if col.NodesErr != nil {
+						log.Warn("kubernetes collect: nodes skipped", "error", col.NodesErr)
+					}
 				}
 				select {
 				case <-ctx.Done():

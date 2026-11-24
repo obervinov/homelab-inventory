@@ -22,7 +22,7 @@ flowchart LR
             I[":8081 internal<br/>GET /v1/inventory"]
             C["Kubernetes collector"]
         end
-        API["Kubernetes API<br/>HelmChart + Pod (read-only)"]
+        API["Kubernetes API<br/>HelmChart + Pod + Node (read-only)"]
         N["Consumer<br/>(n8n, script, dashboard)"]
     end
 
@@ -120,8 +120,14 @@ A missing, malformed or unknown token always gets the same `401`.
 }
 ```
 
-The Kubernetes collector reports two kinds of its own: `chart` (one per k3s `HelmChart`, `ref` is
-`namespace/name`) and `image` (one per distinct `repository:tag` among pods that are not finished).
+The Kubernetes collector reports kinds of its own:
+
+| Kind | One item per | `name` | `ref` |
+|------|--------------|--------|-------|
+| `chart` | k3s `HelmChart` | chart name | `namespace/name` |
+| `image` | distinct `repository:tag` among pods that are not finished | image repository | a pod that runs it |
+| `kubelet` | distinct kubelet version | `k3s`, `rke2` or `kubernetes` | a node that runs it |
+| `kernel` | distinct node kernel version | `linux` | a node that runs it |
 
 ## Configuration
 
@@ -152,6 +158,18 @@ printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1
 | `INV_INTERNAL_ADDR` | `:8081` | inventory listener |
 | `INV_TRUST_FORWARDED_FOR` | `false` | rate-limit by `X-Forwarded-For` when behind a gateway |
 
+## Install
+
+[`deploy/kubernetes.yaml`](deploy/kubernetes.yaml) holds everything the service needs — ServiceAccount,
+ClusterRole and binding, ConfigMap, Deployment and Service:
+
+```bash
+kubectl create namespace homelab-inventory
+kubectl -n homelab-inventory apply -f deploy/kubernetes.yaml
+```
+
+Put your token hashes into its ConfigMap first, and publish only the `report` port.
+
 ## Kubernetes permissions
 
 The collector reads the API with the pod's ServiceAccount and needs nothing beyond this:
@@ -163,14 +181,15 @@ metadata:
   name: homelab-inventory
 rules:
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["pods", "nodes"]
     verbs: ["get", "list"]
   - apiGroups: ["helm.cattle.io"]
     resources: ["helmcharts"]
     verbs: ["get", "list"]
 ```
 
-Set `kubernetes.enabled` to `false` to run it as a plain push-only inventory.
+`nodes` is optional: without it the collector still reports charts and images and logs that nodes were
+skipped. Set `kubernetes.enabled` to `false` to run it as a plain push-only inventory.
 
 ## Host agent
 
