@@ -1,0 +1,12 @@
+# Binaries
+/homelab-inventory
+/bin/
+
+# Local config and secrets
+/config.json
+.env
+*.env
+*.local
+
+# OS
+.DS_Store
