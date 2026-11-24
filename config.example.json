@@ -1,0 +1,15 @@
+{
+  "sources": [
+    { "name": "host-a", "token_sha256": "<sha256 hex of host-a's token>" }
+  ],
+  "read_token_sha256": "<sha256 hex of the read token>",
+  "stale_after": "36h",
+  "kubernetes": { "enabled": true, "source": "k8s", "interval": "15m" },
+  "mappings": [
+    { "kind": "chart", "name": "cert-manager", "repo": "cert-manager/cert-manager" },
+    { "kind": "image", "name": "*/n8nio/n8n", "repo": "n8n-io/n8n" }
+  ],
+  "ignore": [
+    { "kind": "image", "name": "registry.example.internal/*" }
+  ]
+}
