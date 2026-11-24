@@ -1,0 +1,136 @@
+# homelab-inventory — everything it needs in a cluster, in one file.
+#
+#   kubectl create namespace homelab-inventory
+#   kubectl -n homelab-inventory apply -f deploy/kubernetes.yaml
+#
+# Before applying, replace the two token hashes in the ConfigMap (see README,
+# "Configuration"). Publish only the `report` port; `inventory` is for
+# in-cluster consumers and must not get an Ingress or a route.
+#
+# The ClusterRoleBinding names the namespace of the ServiceAccount: change
+# `homelab-inventory` there if you install into another namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-inventory
+---
+# Read-only, cluster-wide. This is the complete list of what the collector reads.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homelab-inventory
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["helm.cattle.io"]
+    resources: ["helmcharts"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-inventory
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-inventory
+subjects:
+  - kind: ServiceAccount
+    name: homelab-inventory
+    namespace: homelab-inventory
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homelab-inventory
+data:
+  config.json: |
+    {
+      "sources": [
+        { "name": "host-a", "token_sha256": "REPLACE_WITH_SHA256_OF_HOST_A_TOKEN" }
+      ],
+      "read_token_sha256": "REPLACE_WITH_SHA256_OF_READ_TOKEN",
+      "stale_after": "36h",
+      "kubernetes": { "enabled": true, "source": "k8s", "interval": "15m" },
+      "mappings": [
+        { "kind": "chart", "name": "cert-manager", "repo": "cert-manager/cert-manager" },
+        { "kind": "kubelet", "name": "k3s", "repo": "k3s-io/k3s" }
+      ],
+      "ignore": []
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-inventory
+  labels:
+    app.kubernetes.io/name: homelab-inventory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-inventory
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-inventory
+    spec:
+      serviceAccountName: homelab-inventory
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: homelab-inventory
+          image: ghcr.io/obervinov/homelab-inventory:v0.2.0
+          ports:
+            - name: report
+              containerPort: 8080
+            - name: inventory
+              containerPort: 8081
+          volumeMounts:
+            - name: config
+              mountPath: /etc/homelab-inventory
+              readOnly: true
+          resources:
+            requests:
+              memory: 64Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: inventory
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: inventory
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: homelab-inventory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-inventory
+spec:
+  selector:
+    app.kubernetes.io/name: homelab-inventory
+  ports:
+    - name: report
+      port: 8080
+      targetPort: report
+    - name: inventory
+      port: 8081
+      targetPort: inventory

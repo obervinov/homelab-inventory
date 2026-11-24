@@ -1,7 +1,8 @@
 // Package kube reads what is deployed from the in-cluster Kubernetes API:
-// k3s HelmChart resources (chart + version) and the images of live pods.
+// k3s HelmChart resources (chart + version), the images of live pods, and the
+// kubelet and kernel versions of the nodes.
 // It talks plain REST with the pod's ServiceAccount token, so the service
-// needs no client library and only get/list on those two resources.
+// needs no client library and only get/list on helmcharts, pods and nodes.
 package kube
 
 import (
@@ -26,6 +27,8 @@ type Collector struct {
 	BaseURL   string
 	TokenPath string
 	Client    *http.Client
+	// NodesErr is the error of the last attempt to list nodes, nil when it worked.
+	NodesErr error
 }
 
 // InCluster builds a collector from the mounted ServiceAccount.
@@ -98,7 +101,20 @@ type pods struct {
 	} `json:"items"`
 }
 
-// Collect returns one item per chart release and one per distinct image:tag.
+type nodes struct {
+	Items []struct {
+		Metadata struct{ Name string } `json:"metadata"`
+		Status   struct {
+			NodeInfo struct {
+				KubeletVersion string `json:"kubeletVersion"`
+				KernelVersion  string `json:"kernelVersion"`
+			} `json:"nodeInfo"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
+// Collect returns one item per chart release, one per distinct image:tag and,
+// when nodes are readable, one per distinct kubelet and kernel version.
 func (c *Collector) Collect(ctx context.Context) ([]store.Item, error) {
 	var hc helmCharts
 	if err := c.get(ctx, "/apis/helm.cattle.io/v1/helmcharts", &hc); err != nil {
@@ -134,8 +150,43 @@ func (c *Collector) Collect(ctx context.Context) ([]store.Item, error) {
 			items = append(items, store.Item{Kind: "image", Name: name, Version: version, Ref: p.Metadata.Namespace + "/" + p.Metadata.Name})
 		}
 	}
+	// Nodes are optional: a role written for an older release has no access to
+	// them, and that must not cost the charts and images collected above.
+	var nl nodes
+	if err := c.get(ctx, "/api/v1/nodes", &nl); err != nil {
+		c.NodesErr = err
+	} else {
+		c.NodesErr = nil
+		for _, n := range nl.Items {
+			info := n.Status.NodeInfo
+			for _, it := range []store.Item{
+				{Kind: "kubelet", Name: Distribution(info.KubeletVersion), Version: strings.TrimPrefix(info.KubeletVersion, "v"), Ref: n.Metadata.Name},
+				{Kind: "kernel", Name: "linux", Version: info.KernelVersion, Ref: n.Metadata.Name},
+			} {
+				key := it.Kind + "\x00" + it.Name + "\x00" + it.Version
+				if it.Version == "" || seen[key] {
+					continue
+				}
+				seen[key] = true
+				items = append(items, it)
+			}
+		}
+	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Kind+items[i].Name < items[j].Kind+items[j].Name })
 	return items, nil
+}
+
+// Distribution names the Kubernetes flavour from a kubelet version:
+// "v1.31.4+k3s1" → "k3s", "v1.31.4+rke2r1" → "rke2", anything else "kubernetes".
+func Distribution(kubeletVersion string) string {
+	_, build, ok := strings.Cut(kubeletVersion, "+")
+	switch {
+	case ok && strings.HasPrefix(build, "k3s"):
+		return "k3s"
+	case ok && strings.HasPrefix(build, "rke2"):
+		return "rke2"
+	}
+	return "kubernetes"
 }
 
 // ChartName reduces "oci://ghcr.io/org/charts/app" to "app".

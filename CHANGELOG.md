@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.0 - 2026-11-24
+### What's Changed
+#### 🚀 Features
+* The Kubernetes collector reports node versions: `kubelet` (named `k3s`, `rke2` or `kubernetes` after the build suffix) and `kernel`, one item per distinct version. Nodes are optional — a ClusterRole without access to them still yields charts and images, and the skip is logged.
+* `deploy/kubernetes.yaml`: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, Deployment and Service in one file, so the service starts with a single `kubectl apply`. A test keeps its image tag and its ClusterRole in step with the release.
+#### ⚠️ Upgrade note
+* Add `nodes` (`get`, `list`) to the ClusterRole to get node versions. Without it nothing breaks; the items are simply absent.
+
 ## v0.1.0 - 2026-11-24
 ### What's Changed
 #### 🚀 Features
