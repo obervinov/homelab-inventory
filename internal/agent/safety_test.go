@@ -69,6 +69,46 @@ func TestReadTrustedFile(t *testing.T) {
 	if _, err := ReadTrustedFile(filepath.Join(dir, "missing.json")); err == nil {
 		t.Error("missing file accepted")
 	}
+
+	// A directory above the file that others can write is refused, unless it
+	// is sticky; a symlinked directory is resolved and judged by its target.
+	outer := t.TempDir()
+	inner := filepath.Join(outer, "inner")
+	if err := os.Mkdir(inner, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(inner, "config.json")
+	if err := os.WriteFile(nested, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	via := filepath.Join(dir, "via")
+	if err := os.Symlink(inner, via); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(outer, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTrustedFile(filepath.Join(via, "config.json")); err != nil {
+		t.Errorf("safe directory behind a symlink rejected: %v", err)
+	}
+	if err := os.Chmod(outer, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTrustedFile(nested); err == nil {
+		t.Error("world-writable ancestor accepted")
+	}
+	if _, err := ReadTrustedFile(filepath.Join(via, "config.json")); err == nil {
+		t.Error("world-writable ancestor behind a symlink accepted")
+	}
+	if err := os.Chmod(outer, 0o777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTrustedFile(nested); err != nil {
+		t.Errorf("sticky ancestor owned by us rejected: %v", err)
+	}
+	if err := os.Chmod(outer, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ReadTrustedFile(dir); err == nil {
 		t.Error("directory accepted as a file")
 	}

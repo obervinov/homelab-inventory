@@ -48,16 +48,21 @@ func ReadTrustedFile(path string) ([]byte, error) {
 	if dir, err = filepath.Abs(dir); err != nil {
 		return nil, err
 	}
-	// The file's own directory must be closed to others outright. Every
-	// directory above it must be too, except a sticky one (/tmp): there others
-	// can create entries but cannot rename or remove ours.
+	// Every directory on the path must belong to root or to us. The file's own
+	// directory must also be closed to group and others; a directory above it
+	// may be open to them only when it is sticky (/tmp): there others can create
+	// entries but cannot rename or remove ours. The owner is checked even then,
+	// because the owner of a sticky directory can.
 	for d, own := dir, true; ; d, own = filepath.Dir(d), false {
 		info, err := os.Stat(d)
 		if err != nil {
 			return nil, err
 		}
+		if err := checkOwner(d, info); err != nil {
+			return nil, err
+		}
 		if own || info.Mode()&os.ModeSticky == 0 {
-			if err := checkOwnerAndMode(d, info); err != nil {
+			if err := checkMode(d, info); err != nil {
 				return nil, err
 			}
 		}
@@ -85,9 +90,20 @@ func ReadTrustedFile(path string) ([]byte, error) {
 }
 
 func checkOwnerAndMode(path string, info os.FileInfo) error {
+	if err := checkOwner(path, info); err != nil {
+		return err
+	}
+	return checkMode(path, info)
+}
+
+func checkMode(path string, info os.FileInfo) error {
 	if info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("%s is writable by group or others (mode %04o)", path, info.Mode().Perm())
 	}
+	return nil
+}
+
+func checkOwner(path string, info os.FileInfo) error {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return fmt.Errorf("%s: cannot determine the owner on this platform", path)
