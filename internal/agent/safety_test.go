@@ -21,23 +21,55 @@ func TestCheckURL(t *testing.T) {
 	}
 }
 
-func TestCheckConfigFile(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "config.json")
+func TestReadTrustedFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(p, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckConfigFile(p); err != nil {
-		t.Errorf("0600 rejected: %v", err)
+	if raw, err := ReadTrustedFile(p); err != nil || string(raw) != "{}" {
+		t.Fatalf("0600 in 0700 rejected: %q %v", raw, err)
 	}
 	for _, mode := range []os.FileMode{0o660, 0o606, 0o666} {
 		if err := os.Chmod(p, mode); err != nil {
 			t.Fatal(err)
 		}
-		if err := CheckConfigFile(p); err == nil {
-			t.Errorf("mode %04o accepted", mode)
+		if _, err := ReadTrustedFile(p); err == nil {
+			t.Errorf("file mode %04o accepted", mode)
 		}
 	}
-	if err := CheckConfigFile(filepath.Join(t.TempDir(), "missing.json")); err == nil {
+	if err := os.Chmod(p, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A symlink is refused even when it points at an acceptable file.
+	link := filepath.Join(dir, "link.json")
+	if err := os.Symlink(p, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTrustedFile(link); err == nil {
+		t.Error("symlink accepted")
+	}
+
+	// Whoever can write the directory can replace the file.
+	for _, mode := range []os.FileMode{0o770, 0o707, 0o777} {
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ReadTrustedFile(p); err == nil {
+			t.Errorf("directory mode %04o accepted", mode)
+		}
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTrustedFile(filepath.Join(dir, "missing.json")); err == nil {
 		t.Error("missing file accepted")
+	}
+	if _, err := ReadTrustedFile(dir); err == nil {
+		t.Error("directory accepted as a file")
 	}
 }

@@ -37,10 +37,6 @@ func main() {
 }
 
 func run(configPath string, dryRun bool) error {
-	// Before anything from the file is trusted: it names commands to execute.
-	if err := agent.CheckConfigFile(configPath); err != nil {
-		return err
-	}
 	cfg, err := agent.LoadConfig(configPath)
 	if err != nil {
 		return err
@@ -65,7 +61,7 @@ func run(configPath string, dryRun bool) error {
 
 	token := os.Getenv("INV_TOKEN")
 	if token == "" {
-		raw, err := os.ReadFile(cfg.TokenFile)
+		raw, err := agent.ReadTrustedFile(cfg.TokenFile)
 		if err != nil {
 			return fmt.Errorf("token: %w", err)
 		}
@@ -81,6 +77,13 @@ func run(configPath string, dryRun bool) error {
 }
 
 func send(ctx context.Context, url, token string, body []byte) error {
+	// Redirects are not followed: Go keeps the Authorization header on a redirect
+	// to the same host, and a redirect to http:// would carry the token in clear
+	// text past the check on the configured URL. A 3xx is reported as an error.
+	client := &http.Client{
+		Timeout:       30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	var last error
 	for attempt := 1; attempt <= 3; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -89,7 +92,7 @@ func send(ctx context.Context, url, token string, body []byte) error {
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+		resp, err := client.Do(req)
 		if err == nil {
 			msg, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
 			_ = resp.Body.Close()

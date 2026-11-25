@@ -30,15 +30,18 @@ type Command struct {
 
 type Config struct {
 	URL string `json:"url"`
-	// TokenFile holds the bearer token (0600, one line). INV_TOKEN overrides it.
+	// TokenFile holds the bearer token, one line, in a file and a directory only
+	// its owner can write. INV_TOKEN overrides it.
 	TokenFile string    `json:"token_file"`
 	Docker    bool      `json:"docker"`
 	Packages  []string  `json:"packages"`
 	Commands  []Command `json:"commands"`
 }
 
+// LoadConfig reads the config through ReadTrustedFile: it names commands to
+// execute, so it is accepted only from a file and a directory nobody else can write.
 func LoadConfig(path string) (*Config, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := ReadTrustedFile(path)
 	if err != nil {
 		return nil, err
 	}

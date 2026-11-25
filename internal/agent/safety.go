@@ -2,9 +2,11 @@ package agent
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -28,21 +30,50 @@ func CheckURL(raw string) error {
 	return fmt.Errorf("url %q: unsupported scheme %q", raw, u.Scheme)
 }
 
-// CheckConfigFile refuses a config another user could have written. The agent
-// usually runs as root and executes the commands listed in that file, so a
-// config writable by anyone else is a way to run code as root.
-func CheckConfigFile(path string) error {
-	info, err := os.Stat(path)
+// ReadTrustedFile returns the content of a file only when no other user could
+// have written it. The agent usually runs as root and executes the commands the
+// config lists, so a config someone else can change is a way to run code as root.
+//
+// The file is opened once, without following a symlink, and both the check and
+// the read use that descriptor: swapping the path after the check changes
+// nothing. The directory is checked too, because whoever can write it can
+// replace the file.
+func ReadTrustedFile(path string) ([]byte, error) {
+	dir, err := os.Stat(filepath.Dir(path))
 	if err != nil {
-		return err
+		return nil, err
 	}
+	if err := checkOwnerAndMode(filepath.Dir(path), dir); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	if err := checkOwnerAndMode(path, info); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(io.LimitReader(f, 1<<20))
+}
+
+func checkOwnerAndMode(path string, info os.FileInfo) error {
 	if info.Mode().Perm()&0o022 != 0 {
-		return fmt.Errorf("config %s is writable by group or others (mode %04o): chmod 600 it", path, info.Mode().Perm())
+		return fmt.Errorf("%s is writable by group or others (mode %04o)", path, info.Mode().Perm())
 	}
-	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		if uid := int(st.Uid); uid != 0 && uid != os.Geteuid() {
-			return fmt.Errorf("config %s is owned by uid %d, expected root or the user running the agent", path, uid)
-		}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("%s: cannot determine the owner on this platform", path)
+	}
+	if uid := int(st.Uid); uid != 0 && uid != os.Geteuid() {
+		return fmt.Errorf("%s is owned by uid %d, expected root or the user running the agent", path, uid)
 	}
 	return nil
 }

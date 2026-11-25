@@ -227,10 +227,11 @@ install -m 0644 inventory-agent.service inventory-agent.timer /etc/systemd/syste
 systemctl daemon-reload && systemctl enable --now inventory-agent.timer
 ```
 
-The agent refuses to start when its config is writable by group or others, or owned by someone other
-than root or the user running it: the file lists commands that the agent executes, usually as root. It
-also refuses a plain `http://` report URL unless the host is loopback, so the token never travels
-unencrypted.
+The config lists commands that the agent executes, usually as root, so the agent reads it — and the
+token file — only when neither the file nor its directory is writable by group or others, both belong
+to root or to the user running the agent, and the path is not a symlink. It refuses a plain `http://`
+report URL unless the host is loopback, and it does not follow redirects, so a misconfigured server
+cannot bounce the token onto an unencrypted connection.
 
 `inventory-agent -dry-run` prints the report instead of sending it. For a command, `pattern` is a regular
 expression whose first group is the version; without it the first `x.y.z` in the output is used.
