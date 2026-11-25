@@ -1,0 +1,10 @@
+{
+  "url": "https://inventory.example.com/v1/report",
+  "token_file": "/etc/homelab-inventory-agent/token",
+  "docker": true,
+  "packages": ["openssl", "docker-ce"],
+  "commands": [
+    { "name": "caddy", "command": ["caddy", "version"] },
+    { "name": "custom-tool", "command": ["custom-tool", "--version"], "pattern": "build (\\d+)" }
+  ]
+}

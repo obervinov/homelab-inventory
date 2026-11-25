@@ -193,17 +193,49 @@ skipped. Set `kubernetes.enabled` to `false` to run it as a plain push-only inve
 
 ## Host agent
 
-[`agent/inventory-agent.sh`](agent/inventory-agent.sh) needs `sh`, `curl` and outbound HTTPS. It reports the
-OS release, the kernel, the images of running containers and the packages you list.
+`inventory-agent` is a single static binary: it collects, sends one report and exits. Each release
+carries it for `linux/amd64` and `linux/arm64` together with `SHA256SUMS`.
 
-```ini
-# /etc/homelab-inventory-agent.env
-INV_URL=https://inventory.example.com/v1/report
-INV_TOKEN=<this host's token>
-INV_PACKAGES="openssl docker-ce"
+```mermaid
+flowchart LR
+    T["systemd timer<br/>every 6 h"] --> A["inventory-agent"]
+    A --> O["/etc/os-release<br/>kernel"]
+    A --> D["docker ps<br/>(optional)"]
+    A --> P["dpkg + apt candidate<br/>(listed packages)"]
+    A --> C["listed binaries<br/>caddy version, …"]
+    A -- "POST /v1/report" --> S["homelab-inventory"]
 ```
 
-`INV_DRY_RUN=1` prints the payload instead of sending it.
+| Reported as | Source | Enabled by |
+|-------------|--------|------------|
+| `os` | `/etc/os-release` | always |
+| `kernel` | running kernel | always |
+| `docker` | images of running containers | `"docker": true` |
+| `package` | installed version, plus `available` when apt has a newer candidate | `"packages": [...]` |
+| `binary` | a version parsed from the command's output | `"commands": [...]` |
+| `binary` `inventory-agent` | the agent itself | always |
+
+A source that cannot be read is skipped with a line on stderr; everything else is still sent.
+
+Install, with the files from [`deploy/agent/`](deploy/agent/):
+
+```bash
+install -m 0755 inventory-agent_<version>_linux_amd64 /usr/local/bin/inventory-agent
+install -d -m 0700 /etc/homelab-inventory-agent
+install -m 0600 config.json token /etc/homelab-inventory-agent/
+install -m 0644 inventory-agent.service inventory-agent.timer /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now inventory-agent.timer
+```
+
+The config lists commands that the agent executes, usually as root, so the agent reads it — and the
+token file — only when the file is not a symlink and neither it nor any directory above it can be
+changed by another user (owned by root or by the user running the agent, not writable by group or
+others; a sticky directory such as `/tmp` is accepted higher up the path). It refuses a plain `http://`
+report URL unless the host is loopback, and it does not follow redirects, so a misconfigured server
+cannot bounce the token onto an unencrypted connection.
+
+`inventory-agent -dry-run` prints the report instead of sending it. For a command, `pattern` is a regular
+expression whose first group is the version; without it the first `x.y.z` in the output is used.
 
 ## State
 

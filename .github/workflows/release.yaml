@@ -25,3 +25,9 @@ jobs:
     if: github.event.pull_request.merged == true && needs.create-release.outputs.released == 'true'
     uses: obervinov/_templates/.github/workflows/docker.yaml@v4.2.0
     needs: [create-release]
+
+  attach-binaries:
+    # the host agent is installed as a binary, so the release carries one per architecture
+    if: github.event.pull_request.merged == true && needs.create-release.outputs.released == 'true'
+    uses: obervinov/_templates/.github/workflows/golang-binaries.yaml@v4.2.0
+    needs: [create-release]

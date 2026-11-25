@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.0 - 2026-11-25
+### What's Changed
+#### 🚀 Features
+* `inventory-agent`: the host agent is now a Go binary, attached to every release for `linux/amd64` and `linux/arm64` with `SHA256SUMS`. It reads the OS release, the kernel, running container images, chosen packages (installed version and apt candidate) and chosen binaries (version parsed from their own output), and reports its own version too. A source that cannot be read is skipped with a warning; the rest is still sent.
+* `deploy/agent/`: example config, systemd service and timer.
+* The agent reads its config and token file only when the file is not a symlink and no other user can change it or any directory above it: the config lists commands to execute. It refuses a plain `http://` report URL outside loopback and does not follow redirects.
+#### 💥 Breaking Changes
+* `agent/inventory-agent.sh` is removed. The binary replaces it; its settings move from environment variables to a JSON config.
+
 ## v0.2.0 - 2026-11-24
 ### What's Changed
 #### 🚀 Features
