@@ -34,18 +34,38 @@ func CheckURL(raw string) error {
 // have written it. The agent usually runs as root and executes the commands the
 // config lists, so a config someone else can change is a way to run code as root.
 //
-// The file is opened once, without following a symlink, and both the check and
-// the read use that descriptor: swapping the path after the check changes
-// nothing. The directory is checked too, because whoever can write it can
-// replace the file.
+// The file is opened once, refusing a symlink in its place, and both the check
+// and the read use that descriptor: swapping the file after the check changes
+// nothing. Every directory on the resolved path is checked too, because whoever
+// can write one of them can replace what is below it.
 func ReadTrustedFile(path string) ([]byte, error) {
-	dir, err := os.Stat(filepath.Dir(path))
+	// Resolve the directory first, so the checks below look at the real
+	// directories rather than at a symlink somebody could repoint.
+	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
 		return nil, err
 	}
-	if err := checkOwnerAndMode(filepath.Dir(path), dir); err != nil {
+	if dir, err = filepath.Abs(dir); err != nil {
 		return nil, err
 	}
+	// The file's own directory must be closed to others outright. Every
+	// directory above it must be too, except a sticky one (/tmp): there others
+	// can create entries but cannot rename or remove ours.
+	for d, own := dir, true; ; d, own = filepath.Dir(d), false {
+		info, err := os.Stat(d)
+		if err != nil {
+			return nil, err
+		}
+		if own || info.Mode()&os.ModeSticky == 0 {
+			if err := checkOwnerAndMode(d, info); err != nil {
+				return nil, err
+			}
+		}
+		if d == filepath.Dir(d) {
+			break
+		}
+	}
+	path = filepath.Join(dir, filepath.Base(path))
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
