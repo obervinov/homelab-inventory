@@ -85,7 +85,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: homelab-inventory
-          image: ghcr.io/obervinov/homelab-inventory:v0.3.0
+          image: ghcr.io/obervinov/homelab-inventory:v0.4.0
           ports:
             - name: report
               containerPort: 8080

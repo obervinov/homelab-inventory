@@ -217,15 +217,23 @@ flowchart LR
 
 A source that cannot be read is skipped with a line on stderr; everything else is still sent.
 
-Install, with the files from [`deploy/agent/`](deploy/agent/):
+Each release also carries one archive per architecture, `inventory-agent_<version>_linux_<arch>.tar.gz`,
+with the binary, the systemd service and timer, an installer and an example config. Its checksum is in
+`SHA256SUMS` next to it. Pin that checksum where the install is automated: a release asset can be
+replaced, a checksum written down in your own repository cannot.
 
 ```bash
-install -m 0755 inventory-agent_<version>_linux_amd64 /usr/local/bin/inventory-agent
-install -d -m 0700 /etc/homelab-inventory-agent
-install -m 0600 config.json token /etc/homelab-inventory-agent/
-install -m 0644 inventory-agent.service inventory-agent.timer /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now inventory-agent.timer
+VERSION=v0.4.0 ARCH=amd64
+curl -fsSLO "https://github.com/obervinov/homelab-inventory/releases/download/${VERSION}/inventory-agent_${VERSION}_linux_${ARCH}.tar.gz"
+echo "<sha256 from SHA256SUMS>  inventory-agent_${VERSION}_linux_${ARCH}.tar.gz" | sha256sum --check
+tar -xzf "inventory-agent_${VERSION}_linux_${ARCH}.tar.gz"
+sudo "inventory-agent_${VERSION}_linux_${ARCH}/install.sh" --config config.json
 ```
+
+`install.sh` puts the binary in `/usr/local/bin`, the units in `/etc/systemd/system` and the config in
+`/etc/homelab-inventory-agent` (`0700`, root-owned), then enables the timer; `--no-enable` stops before
+that. It is safe to run again, which is also how an upgrade is done. The token is yours to provide: a
+root-owned `0600` file named by `token_file` in the config, or `INV_TOKEN` in the unit's environment.
 
 The config lists commands that the agent executes, usually as root, so the agent reads it — and the
 token file — only when the file is not a symlink and neither it nor any directory above it can be

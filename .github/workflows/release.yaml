@@ -31,3 +31,49 @@ jobs:
     if: github.event.pull_request.merged == true && needs.create-release.outputs.released == 'true'
     uses: obervinov/_templates/.github/workflows/golang-binaries.yaml@v4.2.0
     needs: [create-release]
+
+  attach-agent-bundle:
+    # one archive per architecture with the binary, its systemd units and the installer,
+    # so a host installs the agent from a single download and a single checksum
+    if: github.event.pull_request.merged == true && needs.create-release.outputs.released == 'true'
+    needs: [create-release, attach-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Determine version from CHANGELOG.md
+        run: |
+          # Same expression as the release, image and binaries jobs, so all agree on the tag
+          VERSION=$(grep -E '## v[0-9]?([0-9]).[0-9]?([0-9]).[0-9]?([0-9])' CHANGELOG.md | head -1 | grep -Eo 'v[0-9]?([0-9]).[0-9]?([0-9]).[0-9]?([0-9])')
+          if [ -z "$VERSION" ]; then
+            echo "::error::No version found in CHANGELOG.md"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Download the released binaries
+        run: |
+          set -eu
+          gh release download "${VERSION}" --dir dist --pattern 'inventory-agent_*' --pattern SHA256SUMS
+          # Each binary that goes into a bundle must have a line in SHA256SUMS and match it.
+          # This catches a broken or partial upload by the previous job; it is not a defence
+          # against someone replacing both the binary and SHA256SUMS on the release.
+          cd dist
+          for arch in amd64 arm64; do
+            grep -E "  inventory-agent_${VERSION}_linux_${arch}\$" SHA256SUMS | sha256sum --check --strict
+          done
+
+      - name: Build the bundles
+        run: |
+          set -eu
+          # The commit time makes the archive reproducible from the same commit.
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) sh deploy/agent/bundle.sh "${VERSION}" dist
+          cat dist/SHA256SUMS
+
+      - name: Attach to release
+        run: gh release upload "${VERSION}" dist/*.tar.gz dist/SHA256SUMS --clobber
