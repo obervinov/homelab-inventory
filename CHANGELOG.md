@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0 - 2026-11-26
+### What's Changed
+#### 🚀 Features
+* Release bundle for the host agent: `inventory-agent_<version>_linux_<arch>.tar.gz` holds the binary, the systemd service and timer, `install.sh` and an example config. A host installs the agent from one download checked against one line of `SHA256SUMS`, instead of copying the units into its own configuration. Built with GNU tar, the archive is reproducible: the same binary and commit give the same checksum.
+* `deploy/agent/install.sh`: installs or upgrades the agent from the bundle, sets the modes the agent insists on (`0700` directory, `0600` config) and enables the timer. `--config FILE` installs a config, `--no-enable` leaves the timer alone. It never writes the token; an existing config or token file gets its owner and mode put right.
+#### 🔒 Security
+* The release job that builds the bundle pins `actions/checkout` to a commit and verifies the released binaries against `SHA256SUMS` before packing them.
+
 ## v0.3.0 - 2026-11-25
 ### What's Changed
 #### 🚀 Features
