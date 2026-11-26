@@ -253,7 +253,7 @@ func extract(t *testing.T, archive, dest string) map[string]os.FileMode {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,9 @@ func extract(t *testing.T, archive, dest string) map[string]os.FileMode {
 			if _, err := io.Copy(out, tr); err != nil {
 				t.Fatal(err)
 			}
-			out.Close()
+			if err := out.Close(); err != nil {
+				t.Fatal(err)
+			}
 			modes[strings.TrimSuffix(h.Name, "/")] = h.FileInfo().Mode().Perm()
 		default:
 			t.Fatalf("archive entry %q has unexpected type %c", h.Name, h.Typeflag)
